@@ -27,8 +27,15 @@
         <activity
             android:name=".HostActivity"
             android:exported="false" />
+        <activity
+            android:name=".ClientActivity"
+            android:exported="false" />
         <service
             android:name=".VideoSyncHostService"
+            android:enabled="true"
+            android:exported="false" />
+        <service
+            android:name=".VideoSyncClientService"
             android:enabled="true"
             android:exported="false" />
     </application>

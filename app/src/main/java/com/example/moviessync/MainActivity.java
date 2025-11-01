@@ -47,7 +47,8 @@ public class MainActivity extends AppCompatActivity {
         btnClient.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Toast.makeText(MainActivity.this, "クライアントモード", Toast.LENGTH_SHORT).show();
+                Intent intent = new Intent(MainActivity.this, ClientActivity.class);
+                startActivity(intent);
             }
         });
     }

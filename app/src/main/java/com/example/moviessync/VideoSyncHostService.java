@@ -161,9 +161,6 @@ public class VideoSyncHostService extends Service {
             }
         }
 
-        /**
-         * メッセージを処理
-         */
         private void handleMessage(MessageProtocol.Message message) {
             switch (message.type) {
                 case READY:
@@ -178,18 +175,13 @@ public class VideoSyncHostService extends Service {
             }
         }
 
-        /**
-         * メッセージを送信
-         */
+
         public void sendMessage(MessageType type, org.json.JSONObject data) throws IOException {
             if (writer != null) {
                 MessageProtocol.sendMessage(writer, type, data);
             }
         }
 
-        /**
-         * シンプルなメッセージを送信
-         */
         public void sendSimpleMessage(MessageType type) throws IOException {
             if (writer != null) {
                 MessageProtocol.sendSimpleMessage(writer, type);
