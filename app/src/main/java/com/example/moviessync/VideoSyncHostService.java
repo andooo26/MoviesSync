@@ -1,14 +1,20 @@
 package com.example.moviessync;
 
 import android.app.Service;
+import android.content.ContentResolver;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
@@ -26,6 +32,8 @@ public class VideoSyncHostService extends Service {
     private ExecutorService executorService;
     private boolean isRunning = false;
     private ArrayList<ClientConnection> connectedClients = new ArrayList<>();
+    private Uri videoUri;
+    private long videoSize = 0;
 
     // Binder
     public class LocalBinder extends Binder {
@@ -115,6 +123,72 @@ public class VideoSyncHostService extends Service {
     // クライアント取得
     public int getConnectedClientCount() {
         return connectedClients.size();
+    }
+
+    // 動画URIを設定
+    public void setVideoUri(Uri uri) {
+        this.videoUri = uri;
+        if (uri != null) {
+            try {
+                ContentResolver resolver = getContentResolver();
+                InputStream is = resolver.openInputStream(uri);
+                if (is != null) {
+                    videoSize = is.available();
+                    is.close();
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "Error getting video size", e);
+                videoSize = 0;
+            }
+        }
+        Log.d(TAG, "Video URI set: " + uri + ", size: " + videoSize);
+    }
+
+    // 全クライアントに動画メタデータを送信
+    public void broadcastVideoMetadata() {
+        if (videoUri == null) {
+            Log.w(TAG, "No video selected");
+            return;
+        }
+
+        try {
+            JSONObject metadata = new JSONObject();
+            metadata.put("fileName", getFileName(videoUri));
+            metadata.put("fileSize", videoSize);
+
+            synchronized (connectedClients) {
+                for (ClientConnection client : new ArrayList<>(connectedClients)) {
+                    try {
+                        client.sendMessage(MessageType.VIDEO_METADATA, metadata);
+                    } catch (IOException e) {
+                        Log.e(TAG, "Error sending metadata to client", e);
+                    }
+                }
+            }
+            Log.d(TAG, "Video metadata broadcasted to " + connectedClients.size() + " clients");
+        } catch (JSONException e) {
+            Log.e(TAG, "Error creating metadata", e);
+        }
+    }
+
+    // URIからファイル名を取得
+    private String getFileName(Uri uri) {
+        String fileName = "video.mp4";
+        try {
+            ContentResolver resolver = getContentResolver();
+            try (android.database.Cursor cursor = resolver.query(
+                    uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                    if (nameIndex >= 0) {
+                        fileName = cursor.getString(nameIndex);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting file name", e);
+        }
+        return fileName;
     }
 
     private class ClientConnection implements Runnable {
