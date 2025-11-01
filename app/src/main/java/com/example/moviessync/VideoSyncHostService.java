@@ -6,7 +6,11 @@ import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -115,6 +119,8 @@ public class VideoSyncHostService extends Service {
 
     private class ClientConnection implements Runnable {
         private Socket socket;
+        private BufferedWriter writer;
+        private BufferedReader reader;
 
         public ClientConnection(Socket socket) {
             this.socket = socket;
@@ -123,7 +129,31 @@ public class VideoSyncHostService extends Service {
         @Override
         public void run() {
             try {
-                
+                // 入出力ストリームを初期化
+                writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"));
+                reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+
+                // クライアントからの接続メッセージを待機
+                MessageProtocol.Message message = MessageProtocol.receiveMessage(reader);
+                if (message != null && message.type == MessageType.CONNECT) {
+                    Log.d(TAG, "Received CONNECT message from client");
+                    
+                    // 接続確認を送信
+                    MessageProtocol.sendSimpleMessage(writer, MessageType.CONNECTED);
+                    Log.d(TAG, "Sent CONNECTED message to client");
+
+                    // メッセージループ
+                    while (!socket.isClosed() && isRunning) {
+                        message = MessageProtocol.receiveMessage(reader);
+                        if (message == null) {
+                            // 接続が切断された
+                            break;
+                        }
+
+                        // メッセージタイプに応じた処理
+                        handleMessage(message);
+                    }
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Error handling client connection", e);
             } finally {
@@ -131,12 +161,54 @@ public class VideoSyncHostService extends Service {
             }
         }
 
+        /**
+         * メッセージを処理
+         */
+        private void handleMessage(MessageProtocol.Message message) {
+            switch (message.type) {
+                case READY:
+                    Log.d(TAG, "Client is ready");
+                    // TODO: クライアント準備完了時の処理
+                    break;
+                case ERROR:
+                    Log.e(TAG, "Client error: " + message.getString("error"));
+                    break;
+                default:
+                    Log.w(TAG, "Unknown message type: " + message.type);
+            }
+        }
+
+        /**
+         * メッセージを送信
+         */
+        public void sendMessage(MessageType type, org.json.JSONObject data) throws IOException {
+            if (writer != null) {
+                MessageProtocol.sendMessage(writer, type, data);
+            }
+        }
+
+        /**
+         * シンプルなメッセージを送信
+         */
+        public void sendSimpleMessage(MessageType type) throws IOException {
+            if (writer != null) {
+                MessageProtocol.sendSimpleMessage(writer, type);
+            }
+        }
+
         public void close() {
             try {
+                if (reader != null) {
+                    reader.close();
+                }
+                if (writer != null) {
+                    writer.close();
+                }
                 if (socket != null && !socket.isClosed()) {
                     socket.close();
                 }
                 connectedClients.remove(this);
+                Log.d(TAG, "Client connection closed");
             } catch (IOException e) {
                 Log.e(TAG, "Error closing client socket", e);
             }
