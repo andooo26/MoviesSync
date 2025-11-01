@@ -98,11 +98,14 @@ public class HostActivity extends AppCompatActivity {
     private ServiceConnection hostServiceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            tvStatus.setText("サーバー待機中");
+            VideoSyncHostService.LocalBinder binder = (VideoSyncHostService.LocalBinder) service;
+            hostService = binder.getService();
+            tvStatus.setText("サーバー待機中(8888)");
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
+            hostService = null;
             tvStatus.setText("サーバー停止");
         }
     };
@@ -111,7 +114,12 @@ public class HostActivity extends AppCompatActivity {
         updateClientCountRunnable = new Runnable() {
             @Override
             public void run() {
-                tvConnectedClients.setText("接続クライアント: 0");
+                if (hostService != null) {
+                    int count = hostService.getConnectedClientCount();
+                    tvConnectedClients.setText("接続クライアント: " + count);
+                } else {
+                    tvConnectedClients.setText("接続クライアント: -");
+                }
                 handler.postDelayed(this, 1000); // 1秒ごとに更新
             }
         };

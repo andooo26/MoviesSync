@@ -2,6 +2,7 @@ package com.example.moviessync;
 
 import android.app.Service;
 import android.content.Intent;
+import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
 
@@ -21,6 +22,15 @@ public class VideoSyncHostService extends Service {
     private ExecutorService executorService;
     private boolean isRunning = false;
     private ArrayList<ClientConnection> connectedClients = new ArrayList<>();
+
+    // Binder
+    public class LocalBinder extends Binder {
+        VideoSyncHostService getService() {
+            return VideoSyncHostService.this;
+        }
+    }
+
+    private final IBinder binder = new LocalBinder();
 
     @Override
     public void onCreate() {
@@ -45,7 +55,7 @@ public class VideoSyncHostService extends Service {
 
     @Override
     public IBinder onBind(Intent intent) {
-        return null;
+        return binder;
     }
 
     // サーバ開始
