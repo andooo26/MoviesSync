@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -27,17 +31,12 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".HostActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ClientActivity"
-            android:exported="false" />
+            android:name=".SyncPlayerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:screenOrientation="fullSensor" />
         <service
-            android:name=".VideoSyncHostService"
-            android:enabled="true"
-            android:exported="false" />
-        <service
-            android:name=".VideoSyncClientService"
+            android:name=".GroupSyncService"
             android:enabled="true"
             android:exported="false" />
     </application>
