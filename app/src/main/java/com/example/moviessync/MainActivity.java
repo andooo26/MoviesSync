@@ -7,7 +7,6 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
@@ -25,7 +24,6 @@ import com.google.zxing.BarcodeFormat;
 
 public class MainActivity extends AppCompatActivity {
 
-    private TextView tvIpAddress;
     private Button btnCreateGroup;
     private Button btnScanQr;
 
@@ -45,11 +43,8 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
-        tvIpAddress = findViewById(R.id.tvIpAddress);
         btnCreateGroup = findViewById(R.id.btnCreateGroup);
         btnScanQr = findViewById(R.id.btnScanQr);
-
-        displayIpAddress();
 
         // 初期化
         cameraPermissionLauncher = registerForActivityResult(
@@ -125,8 +120,8 @@ public class MainActivity extends AppCompatActivity {
             options.setCameraId(0);
             options.setBeepEnabled(false);
             options.setBarcodeImageEnabled(true);
-            // 向きをロックしない
-            options.setOrientationLocked(false);
+            // 縦画面にロック
+            options.setOrientationLocked(true);
             qrScanLauncher.launch(options);
         } catch (Exception e) {
             Log.e("MainActivity", "QRコードスキャナーの起動でエラー", e);
@@ -134,12 +129,4 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void displayIpAddress() {
-        String ipAddress = NetworkUtils.getLocalIpAddress(this);
-        if (ipAddress != null) {
-            tvIpAddress.setText("IPアドレス: " + ipAddress);
-        } else {
-            tvIpAddress.setText("IPアドレス: 取得できませんでした");
-        }
-    }
 }
