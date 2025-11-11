@@ -231,7 +231,7 @@ public class GroupSyncService extends Service {
 						// 押下時刻から最も近い10秒境界を算出し、最小マージンを確保
 						long now = System.currentTimeMillis();
 						long nearest = ((now + 5000L) / 10000L) * 10000L;
-						long minMarginMs = 1500L; // 各端末が準備できる最小リード
+						long minMarginMs = 3000L; // 各端末が準備できる最小リード
 						long targetEpochMs = (nearest <= now + minMarginMs) ? (nearest + 10000L) : nearest;
 
                         synchronized (connectedMembers) {
@@ -286,6 +286,26 @@ public class GroupSyncService extends Service {
             }
         });
     }
+
+	// 動画ループ終了を通知（メンバーから呼び出し）
+	public void notifyLoopFinished() {
+		executorService.execute(new Runnable() {
+			@Override
+			public void run() {
+				if (isCoordinator) {
+					Log.d(TAG, "Coordinator loop finished, scheduling next loop");
+					broadcastPlayCommand();
+				} else if (coordinatorWriter != null) {
+					try {
+						MessageProtocol.sendSimpleMessage(coordinatorWriter, MessageType.LOOP_END);
+						Log.d(TAG, "Loop end sent to coordinator");
+					} catch (IOException e) {
+						Log.e(TAG, "Error sending loop end to coordinator", e);
+					}
+				}
+			}
+		});
+	}
 
     // 接続メンバー数を取得
     public int getConnectedMemberCount() {
@@ -356,6 +376,11 @@ public class GroupSyncService extends Service {
 							case PLAY_COMMAND: {
 								Log.d(TAG, "Received play command from member, broadcasting to all");
 								// メンバーから要求が来た場合も同じロジックで目標時刻を計算して全員へ配布
+								broadcastPlayCommand();
+								break;
+							}
+							case LOOP_END: {
+								Log.d(TAG, "Received loop end from member, scheduling next loop");
 								broadcastPlayCommand();
 								break;
 							}

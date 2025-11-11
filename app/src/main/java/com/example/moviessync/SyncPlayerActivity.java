@@ -82,6 +82,14 @@ public class SyncPlayerActivity extends AppCompatActivity {
         tvVideoInfo = findViewById(R.id.tvVideoInfo);
         videoView = findViewById(R.id.videoView);
         videoContainer = findViewById(R.id.videoContainer);
+		videoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+			@Override
+			public void onCompletion(MediaPlayer mp) {
+				if (groupService != null) {
+					groupService.notifyLoopFinished();
+				}
+			}
+		});
 
         // Intentから情報を取得
         isCoordinator = getIntent().getBooleanExtra("is_coordinator", false);
@@ -389,6 +397,9 @@ public class SyncPlayerActivity extends AppCompatActivity {
 					handler.postDelayed(new Runnable() {
 						@Override
 						public void run() {
+							if (videoView != null) {
+								videoView.seekTo(0);
+							}
 							startPlayback();
 						}
 					}, delayMs);

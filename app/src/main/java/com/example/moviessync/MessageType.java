@@ -9,6 +9,7 @@ public enum MessageType {
     SYNC_TIME,        // 時刻同期
     PLAY_COMMAND,     // 再生開始指示
     PAUSE_COMMAND,    // 一時停止指示
+    LOOP_END,         // 再生終了通知（次ループ用）
     ERROR             // エラー
 }
 
