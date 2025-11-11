@@ -7,8 +7,11 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Binder;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.IBinder;
 import android.util.Log;
+import android.widget.Toast;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -29,6 +32,7 @@ public class GroupSyncService extends Service {
     private static final String TAG = "GroupSyncService";
     private static final int SERVER_PORT = 8888;
     public static final String ACTION_PLAY = "com.example.moviessync.ACTION_PLAY";
+	public static final String EXTRA_TARGET_EPOCH_MS = "target_epoch_ms";
 
     private ServerSocket serverSocket;
     private ExecutorService executorService;
@@ -39,6 +43,8 @@ public class GroupSyncService extends Service {
     private Socket coordinatorSocket;
     private BufferedWriter coordinatorWriter;
     private BufferedReader coordinatorReader;
+	private volatile long lastSyncSendElapsedMs = 0L;
+	private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     // Binder
     public class LocalBinder extends Binder {
@@ -132,6 +138,9 @@ public class GroupSyncService extends Service {
                         isRunning = true;
                         Log.d(TAG, "Connected to coordinator");
 
+						// 接続直後に時刻同期を要求
+						requestTimeSync();
+
                         // メッセージ受信ループ
                         startMessageLoop();
                     } else {
@@ -143,6 +152,22 @@ public class GroupSyncService extends Service {
             }
         });
     }
+
+	// メンバー: サーバへ時刻同期要求を送信
+	private void requestTimeSync() {
+		executorService.execute(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					lastSyncSendElapsedMs = android.os.SystemClock.elapsedRealtime();
+					MessageProtocol.sendSimpleMessage(coordinatorWriter, MessageType.SYNC_TIME);
+					Log.d(TAG, "Sent SYNC_TIME request");
+				} catch (IOException e) {
+					Log.e(TAG, "Error sending SYNC_TIME", e);
+				}
+			}
+		});
+	}
 
     // メッセージ受信ループ（メンバー用）
     private void startMessageLoop() {
@@ -167,10 +192,24 @@ public class GroupSyncService extends Service {
     // メッセージを処理
     private void handleMessage(MessageProtocol.Message message) {
         switch (message.type) {
+			case SYNC_TIME: {
+				long serverNow = message.getLong("server_now");
+				if (serverNow > 0) {
+					long tRecv = android.os.SystemClock.elapsedRealtime();
+					TimeSyncManager.getInstance(getApplicationContext())
+						.updateOffsetSample(lastSyncSendElapsedMs, tRecv, serverNow);
+					Log.d(TAG, "Time sync updated. serverNow=" + serverNow);
+				}
+				break;
+			}
             case PLAY_COMMAND:
                 Log.d(TAG, "Received PLAY_COMMAND");
-                // Activityに再生開始を通知
+				// Activityに再生開始を通知（目標時刻を添付）
+				long targetEpochMs = message.getLong("target_epoch_ms");
                 Intent playIntent = new Intent(ACTION_PLAY);
+				if (targetEpochMs > 0) {
+					playIntent.putExtra(EXTRA_TARGET_EPOCH_MS, targetEpochMs);
+				}
                 playIntent.setPackage(getPackageName()); // パッケージ名を設定してアプリ内でのみ受信できるようにする
                 sendBroadcast(playIntent);
                 Log.d(TAG, "ACTION_PLAY broadcast sent from handleMessage");
@@ -189,20 +228,40 @@ public class GroupSyncService extends Service {
                 if (isCoordinator) {
                     // コーディネーターは全メンバーにブロードキャスト
                     try {
+						// 押下時刻から最も近い10秒境界を算出し、最小マージンを確保
+						long now = System.currentTimeMillis();
+						long nearest = ((now + 5000L) / 10000L) * 10000L;
+						long minMarginMs = 1500L; // 各端末が準備できる最小リード
+						long targetEpochMs = (nearest <= now + minMarginMs) ? (nearest + 10000L) : nearest;
+
                         synchronized (connectedMembers) {
                             for (MemberConnection member : new ArrayList<>(connectedMembers)) {
                                 try {
-                                    member.sendSimpleMessage(MessageType.PLAY_COMMAND);
+									org.json.JSONObject data = new org.json.JSONObject();
+									data.put("target_epoch_ms", targetEpochMs);
+									MessageProtocol.sendMessage(member.writer, MessageType.PLAY_COMMAND, data);
                                 } catch (IOException e) {
                                     Log.e(TAG, "Error sending play command to member", e);
+								} catch (org.json.JSONException je) {
+									Log.e(TAG, "JSON error sending play command", je);
                                 }
                             }
                         }
                         // コーディネーター自身にもブロードキャストを送信
                         Intent playIntent = new Intent(ACTION_PLAY);
+						playIntent.putExtra(EXTRA_TARGET_EPOCH_MS, targetEpochMs);
                         playIntent.setPackage(getPackageName()); // パッケージ名を設定してアプリ内でのみ受信できるようにする
                         sendBroadcast(playIntent);
                         Log.d(TAG, "Play command broadcasted to " + connectedMembers.size() + " members (including self) - ACTION_PLAY sent: " + ACTION_PLAY);
+						// 送信トースト
+						final long toastTime = targetEpochMs;
+						mainHandler.post(new Runnable() {
+							@Override
+							public void run() {
+								String hhmmss = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(toastTime));
+								Toast.makeText(getApplicationContext(), "再生開始信号を送信しました（" + hhmmss + "）", Toast.LENGTH_SHORT).show();
+							}
+						});
                     } catch (Exception e) {
                         Log.e(TAG, "Error broadcasting play command", e);
                     }
@@ -212,6 +271,13 @@ public class GroupSyncService extends Service {
                         if (coordinatorWriter != null) {
                             MessageProtocol.sendSimpleMessage(coordinatorWriter, MessageType.PLAY_COMMAND);
                             Log.d(TAG, "Play command sent to coordinator");
+							// 送信トースト
+							mainHandler.post(new Runnable() {
+								@Override
+								public void run() {
+									Toast.makeText(getApplicationContext(), "再生開始信号を送信しました", Toast.LENGTH_SHORT).show();
+								}
+							});
                         }
                     } catch (IOException e) {
                         Log.e(TAG, "Error sending play command to coordinator", e);
@@ -274,13 +340,28 @@ public class GroupSyncService extends Service {
                         if (message == null) {
                             break;
                         }
-                        // メンバーからの再生コマンドを受信したら全員にブロードキャスト
-                        if (message.type == MessageType.PLAY_COMMAND) {
-                            Log.d(TAG, "Received play command from member, broadcasting to all");
-                            // broadcastPlayCommand()は既にコーディネーター自身にもブロードキャストを送信するため、
-                            // ここで再度送信する必要はない
-                            broadcastPlayCommand();
-                        }
+						switch (message.type) {
+							case SYNC_TIME: {
+								// サーバ現在時刻を返す
+								org.json.JSONObject data = new org.json.JSONObject();
+								try {
+									data.put("server_now", System.currentTimeMillis());
+									MessageProtocol.sendMessage(writer, MessageType.SYNC_TIME, data);
+									Log.d(TAG, "Responded SYNC_TIME");
+								} catch (org.json.JSONException je) {
+									Log.e(TAG, "Error building SYNC_TIME", je);
+								}
+								break;
+							}
+							case PLAY_COMMAND: {
+								Log.d(TAG, "Received play command from member, broadcasting to all");
+								// メンバーから要求が来た場合も同じロジックで目標時刻を計算して全員へ配布
+								broadcastPlayCommand();
+								break;
+							}
+							default:
+								break;
+						}
                     }
                 }
             } catch (Exception e) {

@@ -22,6 +22,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.Toast;
 import android.widget.TextView;
 import android.widget.VideoView;
 
@@ -367,15 +368,30 @@ public class SyncPlayerActivity extends AppCompatActivity {
             public void onReceive(Context context, Intent intent) {
                 android.util.Log.d("SyncPlayerActivity", "BroadcastReceiver received action: " + intent.getAction());
                 if (GroupSyncService.ACTION_PLAY.equals(intent.getAction())) {
-                    // 再生コマンドを受信したら自分の動画を再生
-                    android.util.Log.d("SyncPlayerActivity", "ACTION_PLAY received, starting playback on main thread");
-                    // メインスレッドで実行を保証
-                    handler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            startPlayback();
-                        }
-                    });
+					long targetEpochMs = intent.getLongExtra(GroupSyncService.EXTRA_TARGET_EPOCH_MS, 0L);
+					long delayMs = 0L;
+					if (targetEpochMs > 0) {
+						long serverNow = TimeSyncManager.getInstance(getApplicationContext()).nowServerMillis();
+						delayMs = Math.max(0L, targetEpochMs - serverNow);
+					}
+					android.util.Log.d("SyncPlayerActivity", "ACTION_PLAY received, scheduling playback delayMs=" + delayMs + ", targetEpochMs=" + targetEpochMs);
+					// 受信トースト
+					try {
+						String msg;
+						if (targetEpochMs > 0) {
+							String hhmmss = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(targetEpochMs));
+							msg = "再生開始信号を受信しました（" + hhmmss + "）";
+						} else {
+							msg = "再生開始信号を受信しました";
+						}
+						Toast.makeText(SyncPlayerActivity.this, msg, Toast.LENGTH_SHORT).show();
+					} catch (Exception ignore) {}
+					handler.postDelayed(new Runnable() {
+						@Override
+						public void run() {
+							startPlayback();
+						}
+					}, delayMs);
                 }
             }
         };

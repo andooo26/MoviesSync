@@ -122,6 +122,7 @@ public class MainActivity extends AppCompatActivity {
             options.setBarcodeImageEnabled(true);
             // 縦画面にロック
             options.setOrientationLocked(true);
+			options.setCaptureActivity(PortraitCaptureActivity.class);
             qrScanLauncher.launch(options);
         } catch (Exception e) {
             Log.e("MainActivity", "QRコードスキャナーの起動でエラー", e);
