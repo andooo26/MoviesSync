@@ -241,7 +241,7 @@ public class SyncPlayerActivity extends AppCompatActivity {
         public void onServiceConnected(ComponentName name, IBinder service) {
             GroupSyncService.LocalBinder binder = (GroupSyncService.LocalBinder) service;
             groupService = binder.getService();
-            tvStatus.setText(isCoordinator ? "グループ待機中（コーディネーター）" : "グループ接続中");
+            tvStatus.setText(isCoordinator ? "参加待ち中" : "グループ接続中");
             
             // コーディネーターの場合、QRコードを再生成（Service接続後にIPアドレスが確定しているため）
             if (isCoordinator) {
@@ -388,9 +388,9 @@ public class SyncPlayerActivity extends AppCompatActivity {
 						String msg;
 						if (targetEpochMs > 0) {
 							String hhmmss = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(targetEpochMs));
-							msg = "再生開始信号を受信しました（" + hhmmss + "）";
+							msg = "再生開始信号を受信（" + hhmmss + "）";
 						} else {
-							msg = "再生開始信号を受信しました";
+							msg = "再生開始信号を受信";
 						}
 						Toast.makeText(SyncPlayerActivity.this, msg, Toast.LENGTH_SHORT).show();
 					} catch (Exception ignore) {}

@@ -259,7 +259,7 @@ public class GroupSyncService extends Service {
 							@Override
 							public void run() {
 								String hhmmss = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(toastTime));
-								Toast.makeText(getApplicationContext(), "再生開始信号を送信しました（" + hhmmss + "）", Toast.LENGTH_SHORT).show();
+								Toast.makeText(getApplicationContext(), "再生開始信号を送信（" + hhmmss + "）", Toast.LENGTH_SHORT).show();
 							}
 						});
                     } catch (Exception e) {
@@ -275,7 +275,7 @@ public class GroupSyncService extends Service {
 							mainHandler.post(new Runnable() {
 								@Override
 								public void run() {
-									Toast.makeText(getApplicationContext(), "再生開始信号を送信しました", Toast.LENGTH_SHORT).show();
+									Toast.makeText(getApplicationContext(), "再生開始信号を送信", Toast.LENGTH_SHORT).show();
 								}
 							});
                         }
