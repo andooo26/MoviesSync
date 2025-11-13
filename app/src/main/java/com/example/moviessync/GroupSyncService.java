@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.Handler;
@@ -33,6 +34,8 @@ public class GroupSyncService extends Service {
     private static final int SERVER_PORT = 8888;
     public static final String ACTION_PLAY = "com.example.moviessync.ACTION_PLAY";
 	public static final String EXTRA_TARGET_EPOCH_MS = "target_epoch_ms";
+	private static final String PREFS_NAME = "MoviesSyncPrefs";
+	private static final String PREF_TOAST_ENABLED = "toast_enabled";
 
     private ServerSocket serverSocket;
     private ExecutorService executorService;
@@ -259,7 +262,7 @@ public class GroupSyncService extends Service {
 							@Override
 							public void run() {
 								String hhmmss = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(toastTime));
-								Toast.makeText(getApplicationContext(), "再生開始信号を送信（" + hhmmss + "）", Toast.LENGTH_SHORT).show();
+								showToastIfEnabled("再生開始信号を送信（" + hhmmss + "）");
 							}
 						});
                     } catch (Exception e) {
@@ -275,7 +278,7 @@ public class GroupSyncService extends Service {
 							mainHandler.post(new Runnable() {
 								@Override
 								public void run() {
-									Toast.makeText(getApplicationContext(), "再生開始信号を送信", Toast.LENGTH_SHORT).show();
+									showToastIfEnabled("再生開始信号を送信");
 								}
 							});
                         }
@@ -411,6 +414,15 @@ public class GroupSyncService extends Service {
             } catch (IOException e) {
                 Log.e(TAG, "Error closing member connection", e);
             }
+        }
+    }
+    
+    // トースト表示設定に基づいてトーストを表示
+    private void showToastIfEnabled(String message) {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        boolean toastEnabled = prefs.getBoolean(PREF_TOAST_ENABLED, true);
+        if (toastEnabled) {
+            Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show();
         }
     }
 }

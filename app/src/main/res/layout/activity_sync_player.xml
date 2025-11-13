@@ -55,6 +55,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/ivQrCode" />
 
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/switchToastEnabled"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="トースト表示"
+        android:textSize="14sp"
+        android:checked="true"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btnSelectVideo" />
+
     <TextView
         android:id="@+id/tvVideoInfo"
         android:layout_width="0dp"

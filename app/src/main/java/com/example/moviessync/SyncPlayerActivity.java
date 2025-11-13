@@ -21,6 +21,8 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.Toast;
 import android.widget.TextView;
+import androidx.appcompat.widget.SwitchCompat;
+import android.content.SharedPreferences;
 
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
@@ -54,6 +56,7 @@ public class SyncPlayerActivity extends AppCompatActivity {
     private FrameLayout videoContainer;
     private ExoPlayer exoPlayer;
     private MediaItem selectedMediaItem;
+    private SwitchCompat switchToastEnabled;
 
     private GroupSyncService groupService;
     private Handler handler = new Handler(Looper.getMainLooper());
@@ -64,6 +67,9 @@ public class SyncPlayerActivity extends AppCompatActivity {
 
     // 動画選択用のActivityResultLauncher
     private ActivityResultLauncher<String> videoPickerLauncher;
+    
+    private static final String PREFS_NAME = "MoviesSyncPrefs";
+    private static final String PREF_TOAST_ENABLED = "toast_enabled";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,7 +90,20 @@ public class SyncPlayerActivity extends AppCompatActivity {
         tvVideoInfo = findViewById(R.id.tvVideoInfo);
         playerView = findViewById(R.id.playerView);
         videoContainer = findViewById(R.id.videoContainer);
+        switchToastEnabled = findViewById(R.id.switchToastEnabled);
         initializePlayer();
+        
+        // トースト表示設定を読み込み
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        boolean toastEnabled = prefs.getBoolean(PREF_TOAST_ENABLED, true);
+        switchToastEnabled.setChecked(toastEnabled);
+        
+        // トースト表示設定の変更を保存
+        switchToastEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+            editor.putBoolean(PREF_TOAST_ENABLED, isChecked);
+            editor.apply();
+        });
 
         // Intentから情報を取得
         isCoordinator = getIntent().getBooleanExtra("is_coordinator", false);
@@ -328,7 +347,7 @@ public class SyncPlayerActivity extends AppCompatActivity {
 						} else {
 							msg = "再生開始信号を受信";
 						}
-						Toast.makeText(SyncPlayerActivity.this, msg, Toast.LENGTH_SHORT).show();
+						showToastIfEnabled(msg);
 					} catch (Exception ignore) {}
 					ensureMediaPrepared();
 					if (exoPlayer != null) {
@@ -480,8 +499,17 @@ public class SyncPlayerActivity extends AppCompatActivity {
         public void onPlayerError(PlaybackException error) {
             android.util.Log.e("SyncPlayerActivity", "Playback error", error);
             showControlUI();
-            Toast.makeText(SyncPlayerActivity.this, "再生エラーが発生しました", Toast.LENGTH_SHORT).show();
+            showToastIfEnabled("再生エラーが発生しました");
         }
     };
+    
+    // トースト表示設定に基づいてトーストを表示
+    private void showToastIfEnabled(String message) {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        boolean toastEnabled = prefs.getBoolean(PREF_TOAST_ENABLED, true);
+        if (toastEnabled) {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        }
+    }
 }
 
