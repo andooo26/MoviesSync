@@ -37,6 +37,8 @@ dependencies {
     implementation libs.constraintlayout
     implementation libs.zxing.core
     implementation libs.zxing.android.embedded
+    implementation libs.exoplayer
+    implementation libs.exoplayer.ui
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core

@@ -8,24 +8,25 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.util.DisplayMetrics;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.Toast;
 import android.widget.TextView;
-import android.widget.VideoView;
 
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.ui.StyledPlayerView;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
 import com.google.zxing.WriterException;
@@ -49,9 +50,10 @@ public class SyncPlayerActivity extends AppCompatActivity {
     private Button btnSelectVideo;
     private Button btnPlay;
     private TextView tvVideoInfo;
-    private VideoView videoView;
+    private StyledPlayerView playerView;
     private FrameLayout videoContainer;
-    private MediaPlayer currentMediaPlayer;
+    private ExoPlayer exoPlayer;
+    private MediaItem selectedMediaItem;
 
     private GroupSyncService groupService;
     private Handler handler = new Handler(Looper.getMainLooper());
@@ -80,16 +82,9 @@ public class SyncPlayerActivity extends AppCompatActivity {
         btnSelectVideo = findViewById(R.id.btnSelectVideo);
         btnPlay = findViewById(R.id.btnPlay);
         tvVideoInfo = findViewById(R.id.tvVideoInfo);
-        videoView = findViewById(R.id.videoView);
+        playerView = findViewById(R.id.playerView);
         videoContainer = findViewById(R.id.videoContainer);
-		videoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-			@Override
-			public void onCompletion(MediaPlayer mp) {
-				if (groupService != null) {
-					groupService.notifyLoopFinished();
-				}
-			}
-		});
+        initializePlayer();
 
         // Intentから情報を取得
         isCoordinator = getIntent().getBooleanExtra("is_coordinator", false);
@@ -104,11 +99,8 @@ public class SyncPlayerActivity extends AppCompatActivity {
                         String fileName = getFileName(uri);
                         tvVideoInfo.setText("動画: " + fileName);
                         btnPlay.setEnabled(true);
-                        
-                        // VideoViewにURIを設定
-                        videoView.setVideoURI(uri);
-                        // 動画のアスペクト比を保ったまま全画面表示するためのリスナーを設定
-                        setupVideoAspectRatio();
+
+                        prepareSelectedMediaItem();
                     }
                 }
         );
@@ -141,7 +133,7 @@ public class SyncPlayerActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (videoView == null || !videoView.isPlaying()) {
+        if (exoPlayer == null || !exoPlayer.isPlaying()) {
             showSystemUI();
         } else {
             hideSystemUI();
@@ -154,19 +146,7 @@ public class SyncPlayerActivity extends AppCompatActivity {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             hideSystemUI();
-            adjustVideoSize();
         }
-    }
-    
-    @Override
-    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                adjustVideoSize();
-            }
-        }, 100);
     }
     
     // システムUIを隠す
@@ -202,6 +182,9 @@ public class SyncPlayerActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         stopUpdatingMemberCount();
+        if (exoPlayer != null) {
+            exoPlayer.pause();
+        }
     }
 
     @Override
@@ -214,6 +197,7 @@ public class SyncPlayerActivity extends AppCompatActivity {
             unbindService(groupServiceConnection);
         }
         stopService(new Intent(this, GroupSyncService.class));
+        releasePlayer();
     }
 
     // Serviceを開始
@@ -280,16 +264,18 @@ public class SyncPlayerActivity extends AppCompatActivity {
 
     // 動画再生開始
     private void startPlayback() {
-        android.util.Log.d("SyncPlayerActivity", "startPlayback called - selectedVideoUri: " + selectedVideoUri + ", videoView: " + videoView);
-        if (selectedVideoUri != null && videoView != null && videoContainer != null) {
+        android.util.Log.d("SyncPlayerActivity", "startPlayback called - selectedVideoUri: " + selectedVideoUri + ", exoPlayer: " + exoPlayer);
+        if (selectedVideoUri != null && exoPlayer != null && playerView != null && videoContainer != null) {
             videoContainer.setVisibility(View.VISIBLE);
             hideControlUI();
             hideSystemUI();
-            adjustVideoSize();
-            videoView.start();
-            android.util.Log.d("SyncPlayerActivity", "Video playback started");
+            ensureMediaPrepared();
+            exoPlayer.pause();
+            exoPlayer.seekTo(0);
+            exoPlayer.play();
+            android.util.Log.d("SyncPlayerActivity", "ExoPlayer playback started");
         } else {
-            android.util.Log.w("SyncPlayerActivity", "Cannot start playback - selectedVideoUri: " + selectedVideoUri + ", videoView: " + videoView);
+            android.util.Log.w("SyncPlayerActivity", "Cannot start playback - selectedVideoUri: " + selectedVideoUri + ", exoPlayer: " + exoPlayer);
         }
     }
     
@@ -314,59 +300,9 @@ public class SyncPlayerActivity extends AppCompatActivity {
         if (ivQrCode != null && isCoordinator) {
             ivQrCode.setVisibility(View.VISIBLE);
         }
-    }
-    
-    // 動画のアスペクト比を保ったまま全画面表示するためのリスナーを設定
-    private void setupVideoAspectRatio() {
-        videoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-            @Override
-            public void onPrepared(MediaPlayer mp) {
-                currentMediaPlayer = mp;
-                adjustVideoSize();
-                mp.setOnVideoSizeChangedListener(new MediaPlayer.OnVideoSizeChangedListener() {
-                    @Override
-                    public void onVideoSizeChanged(MediaPlayer mp, int width, int height) {
-                        adjustVideoSize();
-                    }
-                });
-            }
-        });
-    }
-    
-    // 動画のサイズを調整）
-    private void adjustVideoSize() {
-        if (videoView == null || videoContainer == null || currentMediaPlayer == null) {
-            return;
+        if (videoContainer != null) {
+            videoContainer.setVisibility(View.GONE);
         }
-        
-        int videoWidth = currentMediaPlayer.getVideoWidth();
-        int videoHeight = currentMediaPlayer.getVideoHeight();
-        
-        if (videoWidth == 0 || videoHeight == 0) {
-            return;
-        }
-        
-        DisplayMetrics metrics = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(metrics);
-        int screenWidth = metrics.widthPixels;
-        int screenHeight = metrics.heightPixels;
-        
-        float videoAspectRatio = (float) videoWidth / videoHeight;
-        float screenAspectRatio = (float) screenWidth / screenHeight;
-        
-        ViewGroup.LayoutParams videoParams = videoView.getLayoutParams();
-        
-        if (videoAspectRatio > screenAspectRatio) {
-            // 動画が横長：幅を画面幅に合わせる
-            videoParams.width = screenWidth;
-            videoParams.height = (int) (screenWidth / videoAspectRatio);
-        } else {
-            // 動画が縦長：高さを画面高さに合わせる
-            videoParams.width = (int) (screenHeight * videoAspectRatio);
-            videoParams.height = screenHeight;
-        }
-        
-        videoView.setLayoutParams(videoParams);
     }
 
     // 再生コマンド受信用のBroadcastReceiverを登録
@@ -394,12 +330,14 @@ public class SyncPlayerActivity extends AppCompatActivity {
 						}
 						Toast.makeText(SyncPlayerActivity.this, msg, Toast.LENGTH_SHORT).show();
 					} catch (Exception ignore) {}
+					ensureMediaPrepared();
+					if (exoPlayer != null) {
+						exoPlayer.pause();
+						exoPlayer.seekTo(0);
+					}
 					handler.postDelayed(new Runnable() {
 						@Override
 						public void run() {
-							if (videoView != null) {
-								videoView.seekTo(0);
-							}
 							startPlayback();
 						}
 					}, delayMs);
@@ -471,5 +409,79 @@ public class SyncPlayerActivity extends AppCompatActivity {
             return "動画ファイル";
         }
     }
+
+    private void initializePlayer() {
+        if (exoPlayer != null) {
+            return;
+        }
+        exoPlayer = new ExoPlayer.Builder(this).build();
+        exoPlayer.setRepeatMode(Player.REPEAT_MODE_OFF);
+        exoPlayer.setPlayWhenReady(false);
+        exoPlayer.addListener(playerListener);
+        if (playerView != null) {
+            playerView.setPlayer(exoPlayer);
+        }
+    }
+
+    private void releasePlayer() {
+        if (exoPlayer != null) {
+            exoPlayer.removeListener(playerListener);
+            exoPlayer.release();
+            exoPlayer = null;
+        }
+        if (playerView != null) {
+            playerView.setPlayer(null);
+        }
+        selectedMediaItem = null;
+    }
+
+    private void prepareSelectedMediaItem() {
+        if (exoPlayer == null || selectedVideoUri == null) {
+            return;
+        }
+        selectedMediaItem = MediaItem.fromUri(selectedVideoUri);
+        exoPlayer.setMediaItem(selectedMediaItem, /* resetPosition= */ true);
+        exoPlayer.prepare();
+        exoPlayer.pause();
+    }
+
+    private void ensureMediaPrepared() {
+        if (exoPlayer == null || selectedVideoUri == null) {
+            return;
+        }
+        if (selectedMediaItem == null) {
+            prepareSelectedMediaItem();
+            return;
+        }
+        MediaItem currentItem = exoPlayer.getCurrentMediaItem();
+        if (currentItem == null || currentItem != selectedMediaItem) {
+            exoPlayer.setMediaItem(selectedMediaItem, /* resetPosition= */ true);
+            exoPlayer.prepare();
+        } else if (exoPlayer.getPlaybackState() == Player.STATE_IDLE) {
+            exoPlayer.prepare();
+        }
+    }
+
+    private final Player.Listener playerListener = new Player.Listener() {
+        @Override
+        public void onPlaybackStateChanged(int playbackState) {
+            if (playbackState == Player.STATE_ENDED) {
+                android.util.Log.d("SyncPlayerActivity", "Playback ended, notifying group service");
+                if (exoPlayer != null) {
+                    exoPlayer.pause();
+                }
+                if (groupService != null) {
+                    groupService.notifyLoopFinished();
+                }
+            }
+        }
+
+        @Override
+        public void onPlayerError(PlaybackException error) {
+            android.util.Log.e("SyncPlayerActivity", "Playback error", error);
+            showControlUI();
+            Toast.makeText(SyncPlayerActivity.this, "再生エラーが発生しました", Toast.LENGTH_SHORT).show();
+        }
+    };
 }
 
